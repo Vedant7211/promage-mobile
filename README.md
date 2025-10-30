@@ -1,50 +1,36 @@
-# Welcome to your Expo app 👋
+# Project Management Mobile App
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+This is a modern, feature-rich project management mobile application built with React Native and Expo. The app is designed to be intuitive and user-friendly, with a clean and beautiful UI that supports both light and dark themes. It provides a comprehensive set of tools to help users manage their projects, tasks, and teams effectively.
 
-## Get started
+## Features
 
-1. Install dependencies
+- **Project Management**: Create, edit, and delete projects with detailed information, including descriptions, due dates, and team members.
+- **Task Tracking**: Add, assign, and manage tasks within each project, with status updates and progress tracking.
+- **Team Collaboration**: Assign team members to projects and tasks, with avatars to easily identify who is working on what.
+- **Light and Dark Themes**: A beautiful and modern UI with full support for both light and dark modes, with a theme toggle to switch between them.
+- **Global State Management**: Uses React Context for global state management of projects and themes, ensuring a consistent and predictable user experience.
+- **Modern UI/UX**: A clean, intuitive, and visually appealing user interface with a focus on user experience.
+
+## Tech Stack
+
+- **React Native**: A framework for building native apps using React.
+- **Expo**: A platform for making universal React applications.
+- **TypeScript**: A typed superset of JavaScript that compiles to plain JavaScript.
+- **Tailwind CSS**: A utility-first CSS framework for rapidly building custom designs.
+- **Expo Router**: A file-based router for React Native and web applications.
+
+## Getting Started
+
+1. **Install dependencies**:
 
    ```bash
    npm install
    ```
 
-2. Start the app
+2. **Start the app**:
 
    ```bash
    npx expo start
    ```
 
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
-```
-
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+This will open the Expo developer tools in your browser. You can then run the app on a physical device or in a simulator.
