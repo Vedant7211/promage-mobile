@@ -1,12 +1,24 @@
-import { View, Text, ScrollView, TouchableOpacity, TextInput, Modal, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, TextInput, Modal, Alert, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { AppColors } from '@/constants/colors';
 import { Avatar } from '@/components/avatar';
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useProjects } from '@/contexts/project-context';
 import { useTheme } from '@/contexts/theme-context';
+import * as Notifications from 'expo-notifications';
+import { useNetworkStatus } from '@/hooks/useNetworkStatus';
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: false,
+    shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
+  }),
+});
 
 interface TeamMember {
   name: string;
@@ -17,7 +29,9 @@ interface Task {
   id: string;
   title: string;
   hours: string;
+  dueDate: string;
   assignedMembers: TeamMember[];
+  notificationId?: string;
 }
 
 const availableMembers: TeamMember[] = [
@@ -49,6 +63,7 @@ export default function CreateProjectScreen() {
   const router = useRouter();
   const { addProject } = useProjects();
   const { colors } = useTheme();
+  const isConnected = useNetworkStatus();
   
   const [projectTitle, setProjectTitle] = useState('');
   const [projectDescription, setProjectDescription] = useState('');
@@ -62,7 +77,32 @@ export default function CreateProjectScreen() {
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskHours, setNewTaskHours] = useState('');
+  const [newTaskDueDate, setNewTaskDueDate] = useState('');
   const [taskAssignedMembers, setTaskAssignedMembers] = useState<TeamMember[]>([]);
+
+  const notificationListener = useRef<Notifications.Subscription | null>(null);
+  const responseListener = useRef<Notifications.Subscription | null>(null);
+
+  useEffect(() => {
+    registerForPushNotificationsAsync();
+
+    notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
+      console.log('Notification received:', notification);
+    });
+
+    responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
+      console.log('Notification response received:', response);
+    });
+
+    return () => {
+      if (notificationListener.current) {
+        notificationListener.current.remove();
+      }
+      if (responseListener.current) {
+        responseListener.current.remove();
+      }
+    };
+  }, []);
 
   const toggleMember = (member: TeamMember) => {
     const exists = assignedMembers.find(m => m.name === member.name);
@@ -82,27 +122,37 @@ export default function CreateProjectScreen() {
     }
   };
 
-  const addTask = () => {
-    if (newTaskTitle.trim() && newTaskHours.trim()) {
+  const addTask = async () => {
+    if (newTaskTitle.trim() && newTaskHours.trim() && newTaskDueDate.trim()) {
+      const notificationId = await schedulePushNotification(newTaskTitle, newTaskDueDate);
       const newTask: Task = {
         id: Date.now().toString(),
         title: newTaskTitle,
         hours: newTaskHours + ' hr',
+        dueDate: newTaskDueDate,
         assignedMembers: [...taskAssignedMembers],
+        notificationId,
       };
       setTasks([...tasks, newTask]);
       setNewTaskTitle('');
       setNewTaskHours('');
+      setNewTaskDueDate('');
       setTaskAssignedMembers([]);
       setShowTaskModal(false);
+    } else {
+      Alert.alert('Error', 'Please fill in all task fields, including the due date.');
     }
   };
 
   const removeTask = (taskId: string) => {
+    const taskToRemove = tasks.find(t => t.id === taskId);
+    if (taskToRemove && taskToRemove.notificationId) {
+      Notifications.cancelScheduledNotificationAsync(taskToRemove.notificationId);
+    }
     setTasks(tasks.filter(t => t.id !== taskId));
   };
 
-  const handleCreateProject = () => {
+  const handleCreateProject = async () => {
     // Validate required fields
     if (!projectTitle.trim()) {
       Alert.alert('Error', 'Please enter a project title');
@@ -127,8 +177,7 @@ export default function CreateProjectScreen() {
       return sum + (isNaN(hours) ? 0 : hours);
     }, 0);
 
-    // Create new project
-    addProject({
+    const projectData = {
       title: projectTitle,
       description: projectDescription,
       date: dueDate,
@@ -136,11 +185,18 @@ export default function CreateProjectScreen() {
       teamMembers: assignedMembers,
       iconType: selectedProjectType,
       backgroundColor: selectedColor,
-      status: 'active',
-    });
+      status: 'active' as const,
+    };
 
-    Alert.alert('Success', 'Project created successfully!', [
-      { text: 'OK', onPress: () => router.back() }
+    await addProject(projectData);
+
+    const alertTitle = isConnected ? 'Success' : 'Project Saved Offline';
+    const alertMessage = isConnected
+      ? 'Project created successfully!'
+      : 'This project has been saved locally and will be synced when you are back online.';
+
+    Alert.alert(alertTitle, alertMessage, [
+      { text: 'OK', onPress: () => router.back() },
     ]);
   };
 
@@ -406,6 +462,15 @@ export default function CreateProjectScreen() {
               placeholderTextColor="#999"
             />
 
+            <Text className="text-sm font-semibold text-gray-700 mb-2">Due Date</Text>
+            <TextInput
+              className="bg-gray-100 rounded-2xl px-4 py-3 mb-4 text-base"
+              placeholder="e.g., 2023-12-31"
+              value={newTaskDueDate}
+              onChangeText={setNewTaskDueDate}
+              placeholderTextColor="#999"
+            />
+
             <Text className="text-sm font-semibold text-gray-700 mb-2">Assign To</Text>
             <ScrollView className="mb-4" style={{ maxHeight: 200 }}>
               {availableMembers.map((member) => {
@@ -449,4 +514,44 @@ export default function CreateProjectScreen() {
       </Modal>
     </SafeAreaView>
   );
+}
+
+async function schedulePushNotification(taskTitle: string, dueDate: string) {
+  const triggerDate = new Date(dueDate);
+
+  // Don't schedule notifications for dates in the past
+  if (triggerDate < new Date()) {
+    return;
+  }
+
+  const identifier = await Notifications.scheduleNotificationAsync({
+    content: {
+      title: "Task Overdue!",
+      body: `Hey Verdant, the task \"${taskTitle}\" is now overdue.`,
+    },
+    trigger: { date: triggerDate, channelId: 'default' },
+  });
+  return identifier;
+}
+
+async function registerForPushNotificationsAsync() {
+  if (Platform.OS === 'android') {
+    await Notifications.setNotificationChannelAsync('default', {
+      name: 'default',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: '#FF231F7C',
+    });
+  }
+
+  const { status: existingStatus } = await Notifications.getPermissionsAsync();
+  let finalStatus = existingStatus;
+  if (existingStatus !== 'granted') {
+    const { status } = await Notifications.requestPermissionsAsync();
+    finalStatus = status;
+  }
+  if (finalStatus !== 'granted') {
+    alert('Failed to get push token for push notification!');
+    return;
+  }
 }

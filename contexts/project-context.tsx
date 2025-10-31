@@ -1,4 +1,6 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 
 type ProjectStatus = 'active' | 'completed' | 'on-hold';
 
@@ -103,31 +105,111 @@ const initialProjects: Project[] = [
   },
 ];
 
+const PROJECTS_STORAGE_KEY = 'projects';
+const OFFLINE_PROJECTS_STORAGE_KEY = 'offline_projects';
+
 export function ProjectProvider({ children }: { children: React.ReactNode }) {
   const [projects, setProjects] = useState<Project[]>(initialProjects);
+  const isConnected = useNetworkStatus();
 
-  const addProject = (project: Omit<Project, 'id'>) => {
-    const newProject: Project = {
-      ...project,
-      id: Math.max(...projects.map(p => p.id), 0) + 1,
+  useEffect(() => {
+    const loadAndSyncProjects = async () => {
+      await loadProjectsFromStorage();
+      if (isConnected) {
+        await syncOfflineProjects();
+      }
     };
-    setProjects([newProject, ...projects]);
+    loadAndSyncProjects();
+  }, [isConnected]);
+
+  const loadProjectsFromStorage = async () => {
+    try {
+      const storedProjects = await AsyncStorage.getItem(PROJECTS_STORAGE_KEY);
+      if (storedProjects) {
+        setProjects(JSON.parse(storedProjects));
+      } else {
+        setProjects(initialProjects);
+      }
+    } catch (error) {
+      console.error('Failed to load projects from storage', error);
+    }
+  };
+
+  const syncOfflineProjects = async () => {
+    try {
+      const offlineProjectsStr = await AsyncStorage.getItem(OFFLINE_PROJECTS_STORAGE_KEY);
+      if (offlineProjectsStr) {
+        const offlineProjects: Omit<Project, 'id'>[] = JSON.parse(offlineProjectsStr);
+        if (offlineProjects.length > 0) {
+          setProjects(prevProjects => {
+            const newProjects = [...prevProjects];
+            offlineProjects.forEach(project => {
+              const newProject: Project = {
+                ...project,
+                id: Math.max(...newProjects.map(p => p.id), 0) + 1,
+              };
+              newProjects.unshift(newProject);
+            });
+            return newProjects;
+          });
+          await AsyncStorage.removeItem(OFFLINE_PROJECTS_STORAGE_KEY);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to sync offline projects', error);
+    }
+  };
+
+  const addProject = async (project: Omit<Project, 'id'>) => {
+    if (!isConnected) {
+      try {
+        const offlineProjectsStr = await AsyncStorage.getItem(OFFLINE_PROJECTS_STORAGE_KEY);
+        const offlineProjects = offlineProjectsStr ? JSON.parse(offlineProjectsStr) : [];
+        offlineProjects.push(project);
+        await AsyncStorage.setItem(OFFLINE_PROJECTS_STORAGE_KEY, JSON.stringify(offlineProjects));
+      } catch (error) {
+        console.error('Failed to save project offline', error);
+      }
+      return;
+    }
+
+    setProjects(prevProjects => {
+      const newProject: Project = {
+        ...project,
+        id: Math.max(...prevProjects.map(p => p.id), 0) + 1,
+      };
+      const updatedProjects = [newProject, ...prevProjects];
+      AsyncStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(updatedProjects));
+      return updatedProjects;
+    });
   };
 
   const updateProject = (id: number, updatedFields: Partial<Project>) => {
-    setProjects(projects.map(p => 
-      p.id === id ? { ...p, ...updatedFields } : p
-    ));
+    setProjects(prevProjects => {
+      const updatedProjects = prevProjects.map(p =>
+        p.id === id ? { ...p, ...updatedFields } : p
+      );
+      AsyncStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(updatedProjects));
+      return updatedProjects;
+    });
   };
 
   const deleteProject = (id: number) => {
-    setProjects(projects.filter(p => p.id !== id));
+    setProjects(prevProjects => {
+      const updatedProjects = prevProjects.filter(p => p.id !== id);
+      AsyncStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(updatedProjects));
+      return updatedProjects;
+    });
   };
 
   const updateProjectStatus = (id: number, status: ProjectStatus) => {
-    setProjects(projects.map(p => 
-      p.id === id ? { ...p, status } : p
-    ));
+    setProjects(prevProjects => {
+      const updatedProjects = prevProjects.map(p =>
+        p.id === id ? { ...p, status } : p
+      );
+      AsyncStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(updatedProjects));
+      return updatedProjects;
+    });
   };
 
   return (
